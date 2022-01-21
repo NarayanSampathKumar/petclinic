@@ -1,0 +1,59 @@
+apiVersion: apps/v1 
+kind: Deployment
+metadata:
+   name: petclinic 
+   labels:
+     agentoperator-webhook-enabled: "true"
+spec:
+   replicas: 1 
+   selector:
+      matchLabels:
+         app: petclinic
+   template:
+      metadata:
+         labels:
+            app: petclinic
+      spec:
+         volumes:
+         # Make egbtm available as a volume
+         - name: egbtm
+           emptyDir: {}
+         # initcontainer to download eg java profiler
+         initContainers:
+         - name: setup-egbtm
+           image: eginnovations/java-profiler:latest
+           command: ["/bin/sh","copy.sh"]
+           args:
+           - /opt/egbtm
+           volumeMounts:
+           - mountPath: /opt/egbtm
+             name: egbtm
+         containers:
+         - name: petclinic
+           image: egapm/springboot:petclinic-tomcat-openjdk8jre 
+           ports:
+           - containerPort: 8080
+           env:
+           - name: JAVA_OPTS
+             value: "-javaagent:/opt/egbtm/eg_btm.jar -Dcom.sun.management.jmxremote -Dcom.sun.management.jmxremote.ssl=false -Dcom.sun.management.jmxremote.authenticate=false -Dcom.sun.management.jmxremote.port=3333 -Dcom.sun.management.jmxremote.rmi.port=3333"
+           - name: EG_COLLECTOR_IP
+             valueFrom:
+               fieldRef:
+                 fieldPath: status.hostIP
+           volumeMounts:
+           - name: egbtm
+             mountPath: /opt/egbtm
+---
+apiVersion: v1
+kind: Service
+metadata:
+   name: petclinic
+spec:
+   type: NodePort
+   selector:
+      app: petclinic 
+   ports:
+      - nodePort: 31319 
+        port: 8080 
+        targetPort: 8080
+
